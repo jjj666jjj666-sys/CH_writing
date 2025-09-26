@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <title>Hanzi Writer Quick Start</title>
+  <script src="https://cdn.jsdelivr.net/npm/hanzi-writer@latest/dist/hanzi-writer.min.js"></script>
+  <style>
+    body { font-family: sans-serif; text-align: center; margin-top: 40px; }
+    #target { width:150px; height:150px; margin:20px auto; border:1px solid #ddd; }
+    #log { font-family: ui-monospace, Menlo, monospace; white-space: pre-line; text-align:left; width:320px; margin:10px auto; }
+  </style>
+</head>
+<body>
+  <h1>한자 쓰기 연습(학: 学)</h1>
+  <div id="target"></div>
+  <div id="log"></div>
+
+  <script>
+    // 1) 기본 인스턴스 생성
+    const writer = HanziWriter.create('target', '学', {
+      width: 150, height: 150, padding: 5,
+      showCharacter: false // 처음엔 글자 윤곽 숨김
+    }); // 기본 생성/표시 방법은 문서의 "Basic usage" 참고 :contentReference[oaicite:3]{index=3}
+
+    // 2) 퀴즈 시작 + 콜백 연동
+    const log = (m)=>{ document.getElementById('log').textContent += m + '\n'; };
+
+    writer.quiz({
+      onMistake: (d) => log(`❌ ${d.strokeNum+1}번째 획에서 오답 (총 오답: ${d.totalMistakes})`),
+      onCorrectStroke: (d) => log(`⭕ ${d.strokeNum+1}번째 획 정답`),
+      onComplete: (s) => log(`🎉 완료! 총 오답: ${s.totalMistakes}`)
+    }); // 콜백 이름/의미는 공식 문서의 "Integrating quizzes" 섹션과 동일 :contentReference[oaicite:4]{index=4}
+  </script>
+</body>
+</html>
