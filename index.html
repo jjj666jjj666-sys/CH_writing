@@ -1,81 +1,140 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
-  <meta charset="UTF-8">
-  <title>한자 쓰기 애니메이션 기록</title>
+  <meta charset="UTF-8" />
+  <title>한자 쓰기 애니메이션 & 획별 스냅샷</title>
   <script src="https://cdn.jsdelivr.net/npm/hanzi-writer@latest/dist/hanzi-writer.min.js"></script>
   <style>
-    body { font-family: sans-serif; text-align: center; margin: 30px; }
-    #writer { width: 200px; height: 200px; margin: auto; border: 1px solid #aaa; }
-    #strokes { margin-top: 30px; display:flex; flex-wrap: wrap; gap:10px; justify-content: center; }
-    .stroke-img { border:1px solid #ddd; padding:5px; }
+    body{font-family:sans-serif; margin:28px}
+    h1{margin-bottom:12px}
+    .row{display:flex; gap:24px; align-items:flex-start}
+    #stage{
+      width:240px;height:240px;border:1px solid #bbb;border-radius:8px;
+      display:flex;align-items:center;justify-content:center;overflow:hidden;
+      background:#fff;
+    }
+    #controls{display:flex;gap:8px;margin:12px 0 20px}
+    #shots{flex:1}
+    .char-block{margin-bottom:22px}
+    .char-title{font-weight:700;margin:6px 0}
+    .thumbs{display:flex;flex-wrap:wrap;gap:6px}
+    .thumbs img{width:80px;height:80px;object-fit:contain;border:1px solid #ddd;border-radius:4px;background:#fff}
+    .muted{color:#666;font-size:12px}
   </style>
 </head>
 <body>
-  <h1>한자 쓰기 애니메이션 & 획별 이미지</h1>
-  <div id="writer"></div>
-  <button onclick="startAnimation()">애니메이션 시작</button>
+  <h1>한자 쓰기 애니메이션 & 획별 스냅샷</h1>
 
-  <h2>획별 이미지</h2>
-  <div id="strokes"></div>
+  <div id="controls">
+    <input id="charInput" type="text" value="学,国,人" style="width:260px"
+           title="쉼표로 여러 글자 입력" />
+    <button id="runBtn">애니메이션 시작</button>
+    <span class="muted">예: 学,国,中,人</span>
+  </div>
+
+  <div class="row">
+    <!-- 애니메이션 상자(항상 이 한 칸만 사용) -->
+    <div id="stage"></div>
+
+    <!-- 획별 캡처가 글자별로 묶여서 여기에 표시됨 -->
+    <div id="shots"></div>
+  </div>
 
   <script>
-    const chars = ['学','国','人'];  // 원하는 순서대로 한자 배열
-    let currentCharIndex = 0;
+    const stageId = 'stage';
     let writer = null;
 
-    function startAnimation() {
-      currentCharIndex = 0;
-      document.getElementById('strokes').innerHTML = ''; // 초기화
-      playNextChar();
+    // 유틸: 현재 stage 안의 SVG를 PNG 이미지로 캡처(데이터URL) → <img> 로 반환
+    function snapshotCurrentSVGAsImg(size = 80){
+      const svg = document.querySelector(`#${stageId} svg`);
+      if(!svg) return null;
+
+      // 1) SVG 직렬화
+      const serializer = new XMLSerializer();
+      let svgStr = serializer.serializeToString(svg);
+
+      // XML 헤더가 없으면 추가 (파이어폭스 호환)
+      if(!svgStr.startsWith('<?xml')) {
+        svgStr = '<?xml version="1.0" standalone="no"?>\n' + svgStr;
+      }
+      const svgUrl = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svgStr);
+
+      // 2) SVG → 캔버스 → PNG dataURL
+      const imgEl = new Image();
+      imgEl.src = svgUrl;
+
+      return new Promise(resolve=>{
+        imgEl.onload = ()=>{
+          const vb = svg.viewBox.baseVal;
+          const w = vb && vb.width ? vb.width : svg.clientWidth || 240;
+          const h = vb && vb.height ? vb.height : svg.clientHeight || 240;
+
+          const scale = size / Math.max(w,h);
+          const canvas = document.createElement('canvas');
+          canvas.width = w*scale; canvas.height = h*scale;
+          const ctx = canvas.getContext('2d');
+          ctx.drawImage(imgEl, 0, 0, canvas.width, canvas.height);
+
+          const out = new Image();
+          out.src = canvas.toDataURL('image/png');
+          out.width = size; out.height = size;
+          resolve(out);
+        };
+        imgEl.onerror = ()=>resolve(null);
+      });
     }
 
-    function playNextChar() {
-      if (currentCharIndex >= chars.length) return;
-
-      // 새로운 Writer 생성
-      writer = HanziWriter.create('writer', chars[currentCharIndex], {
-        width: 200,
-        height: 200,
-        padding: 5,
-        strokeColor: '#2c3e50',
-        delayBetweenStrokes: 500,
-        delayBetweenLoops: 1000
+    // 글자 하나를 애니메이션하고, 각 획이 끝날 때마다 썸네일 캡처해서 block에 추가
+    async function playOneChar(ch, shotsWrap){
+      // stage 비우고 새 writer 생성 (겹치지 않도록 항상 한 칸만 사용)
+      document.getElementById(stageId).innerHTML = '';
+      writer = HanziWriter.create(stageId, ch, {
+        width: 240, height: 240, padding: 8,
+        showCharacter: false, strokeColor: '#2c3e50',
+        delayBetweenStrokes: 400
       });
 
-      // 획별 애니메이션
+      // 이 글자의 썸네일 묶음 컨테이너 준비
+      const block = document.createElement('div'); block.className = 'char-block';
+      const title = document.createElement('div'); title.className = 'char-title'; title.textContent = `${ch} — 획별 스냅샷`;
+      const thumbs = document.createElement('div'); thumbs.className = 'thumbs';
+      block.appendChild(title); block.appendChild(thumbs);
+      shotsWrap.appendChild(block);
+
+      // 획이 끝날 때마다 현재 SVG 상태를 캡처
       writer.animateCharacter({
-        onComplete: () => {
-          currentCharIndex++;
-          playNextChar(); // 다음 글자 진행
-        },
-        onStrokeComplete: (strokeData) => {
-          captureStrokeImage(strokeData.strokeNum);
+        onStrokeComplete: async () => {
+          const img = await snapshotCurrentSVGAsImg(80);
+          if(img) thumbs.appendChild(img);
         }
       });
-    }
 
-    // 획별 이미지 캡처 (SVG를 그대로 추출)
-    function captureStrokeImage(strokeNum) {
-      // 현재 한자의 데이터 불러오기
-      HanziWriter.loadCharacterData(chars[currentCharIndex]).then(charData => {
-        const svg = HanziWriter.getCharacterSvg(charData, {
-          width: 100,
-          height: 100,
-          padding: 2,
-          strokeColor: '#2c3e50',
-          showOutline: true,
-          showCharacter: true,
-          strokeAnimationSpeed: 1
-        });
-
-        // strokeNum번째까지만 표시되도록 잘라서 보여주기
-        const container = document.createElement('div');
-        container.className = 'stroke-img';
-        container.innerHTML = `<div>${chars[currentCharIndex]} - ${strokeNum+1}획</div>` + svg;
-        document.getElementById('strokes').appendChild(container);
+      // 위 animateCharacter는 비동기 콜백만 주므로 완료 대기를 위해 한 번 더 수행(완료 후 resolve)
+      await new Promise(resolve=>{
+        writer.animateCharacter({ onComplete: resolve }); // 남은 획 빠르게 마무리 (중복 애니메이션 방지)
       });
+
+      // 마지막(완성본)도 한 장 더
+      const finalImg = await snapshotCurrentSVGAsImg(80);
+      if(finalImg) thumbs.appendChild(finalImg);
     }
+
+    // 여러 글자를 순서대로 실행
+    async function runSequence(chars){
+      const shots = document.getElementById('shots');
+      shots.innerHTML = '';
+      for(const ch of chars){
+        await playOneChar(ch, shots);
+      }
+    }
+
+    // 버튼 연결
+    document.getElementById('runBtn').addEventListener('click', ()=>{
+      const raw = document.getElementById('charInput').value.trim();
+      if(!raw) return;
+      const chars = raw.split(',').map(s=>s.trim()).filter(Boolean);
+      runSequence(chars);
+    });
   </script>
 </body>
 </html>
