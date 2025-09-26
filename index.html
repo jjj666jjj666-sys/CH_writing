@@ -2,43 +2,48 @@
 <html lang="ko">
 <head>
   <meta charset="UTF-8" />
-  <title>한자 쓰기 애니메이션 & 획별 스냅샷(가로·일괄 표시)</title>
+  <title>한자 쓰기: 획별 진행 타일</title>
   <script src="https://cdn.jsdelivr.net/npm/hanzi-writer@latest/dist/hanzi-writer.min.js"></script>
   <style>
-    body{font-family:sans-serif; margin:28px}
-    h1{margin-bottom:12px}
-    .row{display:flex; gap:24px; align-items:flex-start}
-    #stage{
-      width:260px;height:260px;border:1px solid #bbb;border-radius:8px;
-      display:flex;align-items:center;justify-content:center;overflow:hidden;background:#fff;
+    :root { --tile: 96px; }
+    body { font-family: system-ui, sans-serif; margin: 28px; }
+    h1 { margin-bottom: 12px; }
+    #controls { display: flex; gap: 8px; margin: 12px 0 20px; align-items: center; }
+    #stage {
+      width: 260px; height: 260px; border: 1px solid #bbb; border-radius: 8px;
+      display: flex; align-items: center; justify-content: center; background: #fff;
     }
-    #controls{display:flex;gap:8px;margin:12px 0 20px}
-    #shots{flex:1}
-    .char-block{margin-bottom:26px}
-    .char-title{font-weight:700;margin:6px 0}
-    /* ✅ 가로 나열 + 넘치면 다음 줄로 감기지 않도록 가로 스크롤 */
-    .thumbs{
-      display:flex; flex-direction:row; gap:6px;
-      overflow-x:auto; white-space:nowrap; padding-bottom:6px;
+    .layout { display: grid; grid-template-columns: 260px 1fr; gap: 24px; align-items: start; }
+    .char-block { margin-bottom: 18px; }
+    .char-title { font-weight: 700; margin: 8px 0 6px; }
+    .thumbs {
+      display: flex; gap: 8px; overflow-x: auto; padding-bottom: 6px;
     }
-    .thumbs img{
-      width:88px; height:88px; object-fit:contain;
-      border:1px solid #ddd; border-radius:4px; background:#fff; flex:0 0 auto;
+    .tile {
+      width: var(--tile); height: var(--tile);
+      border: 1px solid #ddd; border-radius: 6px; background: #fff; flex: 0 0 auto;
+      display: grid; place-items: center;
     }
-    .muted{color:#666;font-size:12px}
+    .tile > img { width: calc(var(--tile) - 6px); height: calc(var(--tile) - 6px); object-fit: contain; }
+    .muted { color:#666; font-size:12px; }
   </style>
 </head>
 <body>
-  <h1>한자 쓰기 애니메이션 & 획별 스냅샷</h1>
+  <h1>한자 쓰기: 획별 진행 타일</h1>
 
   <div id="controls">
-    <input id="charInput" type="text" value="学,国,人" style="width:260px" />
+    <input id="charInput" type="text" value="早,是" style="width:260px" title="쉼표로 여러 글자" />
+    <label class="muted">속도</label>
+    <input id="speed" type="range" min="0.3" max="2" step="0.1" value="1" />
     <button id="runBtn">애니메이션 시작</button>
-    <span class="muted">쉼표로 여러 글자 입력 (예: 学,国,中,人)</span>
+    <span class="muted">예: 学,国,中,人</span>
   </div>
 
-  <div class="row">
+  <div class="layout">
+    <!-- 애니메이션 상자(항상 이 한 칸만 사용) -->
     <div id="stage"></div>
+
+    <!-- 오른쪽: 글자별로 획 진행 타일을 가로 나열 -->
     <div id="shots"></div>
   </div>
 
@@ -46,83 +51,107 @@
     const stageId = 'stage';
     let writer = null;
 
-    // 현재 stage의 SVG를 PNG dataURL로 캡처 → <img> 반환
-    function snapshotCurrentSVGAsImg(size = 88){
+    // stage 내 현재 SVG를 PNG로 캡처 → <img> 반환
+    function snapshotStageToImg(size = 96) {
       const svg = document.querySelector(`#${stageId} svg`);
-      if(!svg) return Promise.resolve(null);
+      if (!svg) return Promise.resolve(null);
+
       const serializer = new XMLSerializer();
       let svgStr = serializer.serializeToString(svg);
-      if(!svgStr.startsWith('<?xml')) svgStr = '<?xml version="1.0" standalone="no"?>\n' + svgStr;
+      if (!svgStr.startsWith('<?xml')) {
+        svgStr = '<?xml version="1.0" standalone="no"?>\n' + svgStr;
+      }
       const svgUrl = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svgStr);
 
-      const imgEl = new Image(); imgEl.src = svgUrl;
-      return new Promise(resolve=>{
-        imgEl.onload = ()=>{
+      const img = new Image();
+      img.src = svgUrl;
+
+      return new Promise(resolve => {
+        img.onload = () => {
           const vb = svg.viewBox.baseVal;
           const w = vb?.width || svg.clientWidth || 260;
           const h = vb?.height || svg.clientHeight || 260;
-          const scale = size / Math.max(w,h);
+          const scale = size / Math.max(w, h);
+
           const canvas = document.createElement('canvas');
-          canvas.width = w*scale; canvas.height = h*scale;
-          canvas.getContext('2d').drawImage(imgEl,0,0,canvas.width,canvas.height);
-          const thumb = new Image();
-          thumb.src = canvas.toDataURL('image/png');
-          thumb.width = size; thumb.height = size;
-          resolve(thumb);
+          canvas.width = w * scale;
+          canvas.height = h * scale;
+          const ctx = canvas.getContext('2d');
+          ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+
+          const out = new Image();
+          out.src = canvas.toDataURL('image/png');
+          out.width = size; out.height = size;
+          resolve(out);
         };
-        imgEl.onerror = ()=>resolve(null);
+        img.onerror = () => resolve(null);
       });
     }
 
-    // 글자 하나 처리: 애니메이션 동안 캡처를 배열에 담았다가, 완료 후 한 번에 렌더링
-    async function playOneChar(ch, shotsWrap){
+    // 글자 하나: 애니메이션 동안 매 획 완료 시 상태를 버퍼에 저장하고, 끝난 뒤 한 번에 타일로 렌더
+    async function playChar(char, shotsWrap, speed = 1) {
+      // stage 초기화 & writer 생성
       document.getElementById(stageId).innerHTML = '';
-      writer = HanziWriter.create(stageId, ch, {
+      writer = HanziWriter.create(stageId, char, {
         width: 260, height: 260, padding: 10,
-        showCharacter: false, strokeColor: '#2c3e50', delayBetweenStrokes: 350
+        showCharacter: false,          // 윤곽 감춤(획만 보이게)
+        strokeColor: '#394955',
+        strokeAnimationSpeed: Number(speed), // ← 한 획 그리는 속도
+        delayBetweenStrokes: 350
       });
 
-      // UI 컨테이너
+      // 우측에 이 글자용 영역 생성
       const block = document.createElement('div'); block.className = 'char-block';
       const title = document.createElement('div'); title.className = 'char-title';
-      title.textContent = `${ch} — 획별 스냅샷`;
+      title.textContent = `${char} — 획별 진행`;
       const thumbs = document.createElement('div'); thumbs.className = 'thumbs';
       block.appendChild(title); block.appendChild(thumbs);
       shotsWrap.appendChild(block);
 
-      // 임시 저장소(애니메이션 끝나면 한꺼번에 붙임)
+      // 버퍼: 1획, 2획, ... 누적 상태 이미지
       const buffer = [];
 
+      // 첫 프레임(아무 획도 그리기 전)도 넣고 싶다면 이 줄 주석 해제
+      // buffer.push(await snapshotStageToImg());
+
+      // 애니메이션: 획이 끝날 때마다 현재 상태 캡처
       writer.animateCharacter({
         onStrokeComplete: async () => {
-          const img = await snapshotCurrentSVGAsImg(88);
-          if(img) buffer.push(img); // ← 일단 모아두기
+          const img = await snapshotStageToImg();
+          if (img) buffer.push(img);
         }
       });
 
-      // 완료 기다리기
+      // 전체 완료 대기
       await new Promise(resolve => writer.animateCharacter({ onComplete: resolve }));
 
-      // 완성본도 추가로 캡처해서 배열 끝에
-      const finalImg = await snapshotCurrentSVGAsImg(88);
-      if(finalImg) buffer.push(finalImg);
+      // 완성본 한 장 더 추가(원하면 유지)
+      const finalImg = await snapshotStageToImg();
+      if (finalImg) buffer.push(finalImg);
 
-      // ✅ 여기서 한 번에 DOM에 추가 → 가로로 차례대로 표시
-      buffer.forEach(img => thumbs.appendChild(img));
+      // 한 번에 렌더(가로 타일)
+      buffer.forEach(image => {
+        const tile = document.createElement('div');
+        tile.className = 'tile';
+        tile.appendChild(image);
+        thumbs.appendChild(tile);
+      });
     }
 
-    // 여러 글자 연속 실행
-    async function runSequence(chars){
+    async function runSequence(chars, speed) {
       const shots = document.getElementById('shots');
       shots.innerHTML = '';
-      for(const ch of chars){ await playOneChar(ch, shots); }
+      for (const ch of chars) {
+        await playChar(ch, shots, speed);
+      }
     }
 
     // 버튼
-    document.getElementById('runBtn').addEventListener('click', ()=>{
-      const chars = document.getElementById('charInput').value
-        .split(',').map(s=>s.trim()).filter(Boolean);
-      if(chars.length) runSequence(chars);
+    document.getElementById('runBtn').addEventListener('click', () => {
+      const list = document.getElementById('charInput').value
+        .split(',').map(s => s.trim()).filter(Boolean);
+      const speed = document.getElementById('speed').value;
+      if (list.length) runSequence(list, speed);
     });
   </script>
 </body>
