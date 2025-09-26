@@ -15,10 +15,12 @@
     }
     #controls{display:flex;gap:8px;margin:12px 0 20px}
     #shots{flex:1}
-    .char-block{margin-bottom:22px}
+    .char-block{margin-bottom:26px}
     .char-title{font-weight:700;margin:6px 0}
-    .thumbs{display:flex;flex-wrap:wrap;gap:6px}
-    .thumbs img{width:80px;height:80px;object-fit:contain;border:1px solid #ddd;border-radius:4px;background:#fff}
+    /* ✅ 획별 스냅샷을 가로(row)로 배치 */
+    .thumbs{display:flex;flex-direction:row;gap:6px;flex-wrap:wrap}
+    .thumbs img{width:80px;height:80px;object-fit:contain;
+      border:1px solid #ddd;border-radius:4px;background:#fff}
     .muted{color:#666;font-size:12px}
   </style>
 </head>
@@ -33,10 +35,9 @@
   </div>
 
   <div class="row">
-    <!-- 애니메이션 상자(항상 이 한 칸만 사용) -->
+    <!-- 애니메이션 상자 -->
     <div id="stage"></div>
-
-    <!-- 획별 캡처가 글자별로 묶여서 여기에 표시됨 -->
+    <!-- 획별 캡처 -->
     <div id="shots"></div>
   </div>
 
@@ -44,37 +45,25 @@
     const stageId = 'stage';
     let writer = null;
 
-    // 유틸: 현재 stage 안의 SVG를 PNG 이미지로 캡처(데이터URL) → <img> 로 반환
-    function snapshotCurrentSVGAsImg(size = 80){
+    async function snapshotCurrentSVGAsImg(size = 80){
       const svg = document.querySelector(`#${stageId} svg`);
       if(!svg) return null;
-
-      // 1) SVG 직렬화
       const serializer = new XMLSerializer();
       let svgStr = serializer.serializeToString(svg);
-
-      // XML 헤더가 없으면 추가 (파이어폭스 호환)
-      if(!svgStr.startsWith('<?xml')) {
+      if(!svgStr.startsWith('<?xml'))
         svgStr = '<?xml version="1.0" standalone="no"?>\n' + svgStr;
-      }
       const svgUrl = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svgStr);
-
-      // 2) SVG → 캔버스 → PNG dataURL
-      const imgEl = new Image();
-      imgEl.src = svgUrl;
-
+      const imgEl = new Image(); imgEl.src = svgUrl;
       return new Promise(resolve=>{
         imgEl.onload = ()=>{
           const vb = svg.viewBox.baseVal;
           const w = vb && vb.width ? vb.width : svg.clientWidth || 240;
           const h = vb && vb.height ? vb.height : svg.clientHeight || 240;
-
           const scale = size / Math.max(w,h);
           const canvas = document.createElement('canvas');
           canvas.width = w*scale; canvas.height = h*scale;
           const ctx = canvas.getContext('2d');
-          ctx.drawImage(imgEl, 0, 0, canvas.width, canvas.height);
-
+          ctx.drawImage(imgEl,0,0,canvas.width,canvas.height);
           const out = new Image();
           out.src = canvas.toDataURL('image/png');
           out.width = size; out.height = size;
@@ -84,9 +73,7 @@
       });
     }
 
-    // 글자 하나를 애니메이션하고, 각 획이 끝날 때마다 썸네일 캡처해서 block에 추가
     async function playOneChar(ch, shotsWrap){
-      // stage 비우고 새 writer 생성 (겹치지 않도록 항상 한 칸만 사용)
       document.getElementById(stageId).innerHTML = '';
       writer = HanziWriter.create(stageId, ch, {
         width: 240, height: 240, padding: 8,
@@ -94,14 +81,12 @@
         delayBetweenStrokes: 400
       });
 
-      // 이 글자의 썸네일 묶음 컨테이너 준비
       const block = document.createElement('div'); block.className = 'char-block';
       const title = document.createElement('div'); title.className = 'char-title'; title.textContent = `${ch} — 획별 스냅샷`;
       const thumbs = document.createElement('div'); thumbs.className = 'thumbs';
       block.appendChild(title); block.appendChild(thumbs);
       shotsWrap.appendChild(block);
 
-      // 획이 끝날 때마다 현재 SVG 상태를 캡처
       writer.animateCharacter({
         onStrokeComplete: async () => {
           const img = await snapshotCurrentSVGAsImg(80);
@@ -109,26 +94,17 @@
         }
       });
 
-      // 위 animateCharacter는 비동기 콜백만 주므로 완료 대기를 위해 한 번 더 수행(완료 후 resolve)
-      await new Promise(resolve=>{
-        writer.animateCharacter({ onComplete: resolve }); // 남은 획 빠르게 마무리 (중복 애니메이션 방지)
-      });
-
-      // 마지막(완성본)도 한 장 더
+      await new Promise(resolve=>writer.animateCharacter({ onComplete: resolve }));
       const finalImg = await snapshotCurrentSVGAsImg(80);
       if(finalImg) thumbs.appendChild(finalImg);
     }
 
-    // 여러 글자를 순서대로 실행
     async function runSequence(chars){
       const shots = document.getElementById('shots');
       shots.innerHTML = '';
-      for(const ch of chars){
-        await playOneChar(ch, shots);
-      }
+      for(const ch of chars){ await playOneChar(ch, shots); }
     }
 
-    // 버튼 연결
     document.getElementById('runBtn').addEventListener('click', ()=>{
       const raw = document.getElementById('charInput').value.trim();
       if(!raw) return;
