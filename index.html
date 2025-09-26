@@ -1,35 +1,63 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="ko">
 <head>
-  <meta charset="utf-8" />
-  <title>Hanzi Writer Quick Start</title>
+  <meta charset="UTF-8">
+  <title>Hanzi Writer Demo</title>
+  <!-- Hanzi Writer CDN -->
   <script src="https://cdn.jsdelivr.net/npm/hanzi-writer@latest/dist/hanzi-writer.min.js"></script>
   <style>
-    body { font-family: sans-serif; text-align: center; margin-top: 40px; }
-    #target { width:150px; height:150px; margin:20px auto; border:1px solid #ddd; }
-    #log { font-family: ui-monospace, Menlo, monospace; white-space: pre-line; text-align:left; width:320px; margin:10px auto; }
+    body { font-family: sans-serif; text-align: center; margin: 40px; }
+    .char-box { display:inline-block; margin: 20px; }
+    .svg-box { margin-top:30px; }
   </style>
 </head>
 <body>
-  <h1>한자 쓰기 연습(학: 学)</h1>
-  <div id="target"></div>
-  <div id="log"></div>
+  <h1>Hanzi Writer: Chaining + Raw SVG 예제</h1>
+
+  <!-- 여러 글자 애니메이션 체인 -->
+  <div class="char-box" id="char1"></div>
+  <div class="char-box" id="char2"></div>
+  <div class="char-box" id="char3"></div>
+
+  <!-- Raw Character SVG 출력 -->
+  <div class="svg-box">
+    <h2>Raw Character SVG (中)</h2>
+    <div id="raw"></div>
+  </div>
 
   <script>
-    // 1) 기본 인스턴스 생성
-    const writer = HanziWriter.create('target', '学', {
-      width: 150, height: 150, padding: 5,
-      showCharacter: false // 처음엔 글자 윤곽 숨김
-    }); // 기본 생성/표시 방법은 문서의 "Basic usage" 참고 :contentReference[oaicite:3]{index=3}
+    // 1) 글자 애니메이션 체인 (Chaining character animations)
+    const chars = ['学','国','人'];
+    const boxes = ['char1','char2','char3'];
+    const writers = chars.map((c,i)=>
+      HanziWriter.create(boxes[i], c, { width:120, height:120, padding:5 })
+    );
 
-    // 2) 퀴즈 시작 + 콜백 연동
-    const log = (m)=>{ document.getElementById('log').textContent += m + '\n'; };
+    // 순서대로 애니메이션
+    let idx = 0;
+    function animateNext(){
+      if(idx >= writers.length) return;
+      writers[idx].animateCharacter({
+        onComplete: () => { idx++; animateNext(); }
+      });
+    }
+    animateNext();
 
-    writer.quiz({
-      onMistake: (d) => log(`❌ ${d.strokeNum+1}번째 획에서 오답 (총 오답: ${d.totalMistakes})`),
-      onCorrectStroke: (d) => log(`⭕ ${d.strokeNum+1}번째 획 정답`),
-      onComplete: (s) => log(`🎉 완료! 총 오답: ${s.totalMistakes}`)
-    }); // 콜백 이름/의미는 공식 문서의 "Integrating quizzes" 섹션과 동일 :contentReference[oaicite:4]{index=4}
+    // 2) Raw Character SVG
+    HanziWriter.loadCharacterData('中').then(charData => {
+      // outline=true: 외곽선 / stroke=false: 획 숨김
+      const svg = HanziWriter.getCharacterSvg(charData, {
+        width: 200,
+        height: 200,
+        padding: 5,
+        strokeColor: '#2c3e50',
+        strokeWidth: 2,
+        radicalColor: '#d32f2f',
+        showOutline: true,
+        showCharacter: true
+      });
+      document.getElementById('raw').innerHTML = svg;
+    });
   </script>
 </body>
 </html>
