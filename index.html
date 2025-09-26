@@ -2,62 +2,80 @@
 <html lang="ko">
 <head>
   <meta charset="UTF-8">
-  <title>Hanzi Writer Demo</title>
-  <!-- Hanzi Writer CDN -->
+  <title>한자 쓰기 애니메이션 기록</title>
   <script src="https://cdn.jsdelivr.net/npm/hanzi-writer@latest/dist/hanzi-writer.min.js"></script>
   <style>
-    body { font-family: sans-serif; text-align: center; margin: 40px; }
-    .char-box { display:inline-block; margin: 20px; }
-    .svg-box { margin-top:30px; }
+    body { font-family: sans-serif; text-align: center; margin: 30px; }
+    #writer { width: 200px; height: 200px; margin: auto; border: 1px solid #aaa; }
+    #strokes { margin-top: 30px; display:flex; flex-wrap: wrap; gap:10px; justify-content: center; }
+    .stroke-img { border:1px solid #ddd; padding:5px; }
   </style>
 </head>
 <body>
-  <h1>Hanzi Writer: Chaining + Raw SVG 예제</h1>
+  <h1>한자 쓰기 애니메이션 & 획별 이미지</h1>
+  <div id="writer"></div>
+  <button onclick="startAnimation()">애니메이션 시작</button>
 
-  <!-- 여러 글자 애니메이션 체인 -->
-  <div class="char-box" id="char1"></div>
-  <div class="char-box" id="char2"></div>
-  <div class="char-box" id="char3"></div>
-
-  <!-- Raw Character SVG 출력 -->
-  <div class="svg-box">
-    <h2>Raw Character SVG (中)</h2>
-    <div id="raw"></div>
-  </div>
+  <h2>획별 이미지</h2>
+  <div id="strokes"></div>
 
   <script>
-    // 1) 글자 애니메이션 체인 (Chaining character animations)
-    const chars = ['学','国','人'];
-    const boxes = ['char1','char2','char3'];
-    const writers = chars.map((c,i)=>
-      HanziWriter.create(boxes[i], c, { width:120, height:120, padding:5 })
-    );
+    const chars = ['学','国','人'];  // 원하는 순서대로 한자 배열
+    let currentCharIndex = 0;
+    let writer = null;
 
-    // 순서대로 애니메이션
-    let idx = 0;
-    function animateNext(){
-      if(idx >= writers.length) return;
-      writers[idx].animateCharacter({
-        onComplete: () => { idx++; animateNext(); }
-      });
+    function startAnimation() {
+      currentCharIndex = 0;
+      document.getElementById('strokes').innerHTML = ''; // 초기화
+      playNextChar();
     }
-    animateNext();
 
-    // 2) Raw Character SVG
-    HanziWriter.loadCharacterData('中').then(charData => {
-      // outline=true: 외곽선 / stroke=false: 획 숨김
-      const svg = HanziWriter.getCharacterSvg(charData, {
+    function playNextChar() {
+      if (currentCharIndex >= chars.length) return;
+
+      // 새로운 Writer 생성
+      writer = HanziWriter.create('writer', chars[currentCharIndex], {
         width: 200,
         height: 200,
         padding: 5,
         strokeColor: '#2c3e50',
-        strokeWidth: 2,
-        radicalColor: '#d32f2f',
-        showOutline: true,
-        showCharacter: true
+        delayBetweenStrokes: 500,
+        delayBetweenLoops: 1000
       });
-      document.getElementById('raw').innerHTML = svg;
-    });
+
+      // 획별 애니메이션
+      writer.animateCharacter({
+        onComplete: () => {
+          currentCharIndex++;
+          playNextChar(); // 다음 글자 진행
+        },
+        onStrokeComplete: (strokeData) => {
+          captureStrokeImage(strokeData.strokeNum);
+        }
+      });
+    }
+
+    // 획별 이미지 캡처 (SVG를 그대로 추출)
+    function captureStrokeImage(strokeNum) {
+      // 현재 한자의 데이터 불러오기
+      HanziWriter.loadCharacterData(chars[currentCharIndex]).then(charData => {
+        const svg = HanziWriter.getCharacterSvg(charData, {
+          width: 100,
+          height: 100,
+          padding: 2,
+          strokeColor: '#2c3e50',
+          showOutline: true,
+          showCharacter: true,
+          strokeAnimationSpeed: 1
+        });
+
+        // strokeNum번째까지만 표시되도록 잘라서 보여주기
+        const container = document.createElement('div');
+        container.className = 'stroke-img';
+        container.innerHTML = `<div>${chars[currentCharIndex]} - ${strokeNum+1}획</div>` + svg;
+        document.getElementById('strokes').appendChild(container);
+      });
+    }
   </script>
 </body>
 </html>
