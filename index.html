@@ -114,16 +114,17 @@
       // 첫 프레임(아무 획도 그리기 전)도 넣고 싶다면 이 줄 주석 해제
       // buffer.push(await snapshotStageToImg());
 
-      // 애니메이션: 획이 끝날 때마다 현재 상태 캡처
-      writer.animateCharacter({
-        onStrokeComplete: async () => {
-          const img = await snapshotStageToImg();
-          if (img) buffer.push(img);
-        }
-      });
+      // 애니메이션 한 번만, 완료까지 기다리기
+      await new Promise(resolve => {
+  writer.animateCharacter({
+    onStrokeComplete: async () => {
+      const img = await snapshotStageToImg();
+      if (img) buffer.push(img);
+    },
+    onComplete: resolve
+  });
+});
 
-      // 전체 완료 대기
-      await new Promise(resolve => writer.animateCharacter({ onComplete: resolve }));
 
       // 완성본 한 장 더 추가(원하면 유지)
       const finalImg = await snapshotStageToImg();
